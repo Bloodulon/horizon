@@ -40,6 +40,35 @@ impl Game<'_> {
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(position, yaw),
             );
+        } else if kind == "minecraft:item_display" {
+            self.displays.insert(
+                id as i32,
+                super::displays::RemoteDisplay::new(
+                    position,
+                    yaw,
+                    super::displays::DisplayKind::Item {
+                        stack: None,
+                        context: horizon_assets::item_model::DisplayContext::None,
+                    },
+                ),
+            );
+        } else if kind == "minecraft:block_display" {
+            self.displays.insert(
+                id as i32,
+                super::displays::RemoteDisplay::new(
+                    position,
+                    yaw,
+                    super::displays::DisplayKind::Block {
+                        state: horizon_world::registry::BlockStateId(0),
+                    },
+                ),
+            );
+        } else if kind == "minecraft:interaction" {
+            // The width, height and response follow in SetEntityData.
+            self.interactions.insert(
+                id as i32,
+                super::interactions::RemoteInteraction::new(position),
+            );
         } else if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);
             c.yaw = yaw;
@@ -121,6 +150,13 @@ impl Game<'_> {
     pub(super) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         if let Some(display) = self.text_displays.get_mut(&id) {
             display.metadata(values);
+            return;
+        }
+        if self.displays.contains_key(&id) {
+            self.remote_display_data(id, values);
+            return;
+        }
+        if self.remote_interaction_data(id, values) {
             return;
         }
         let id = id as u32;
@@ -303,6 +339,11 @@ impl Game<'_> {
                 "yaw": c.yaw, "color": c.color_name()}),
             );
         }
+        for (&id, i) in &self.interactions {
+            out.push(json!({"id": id, "kind": "minecraft:interaction",
+                "position": at(i.position), "width": i.width, "height": i.height,
+                "response": i.response}));
+        }
         for f in &self.item_frames {
             out.push(
                 json!({"id": f.id, "kind": f.kind(), "position": f.pos, "facing": f.facing,
@@ -319,6 +360,8 @@ impl Game<'_> {
     /// Every object a server sent (a new connection, level or dimension).
     pub(super) fn clear_remote_objects(&mut self) {
         self.text_displays.clear();
+        self.displays.clear();
+        self.interactions.clear();
         self.remote_knots.clear();
         self.carts.clear();
         self.boats.clear();
@@ -330,6 +373,8 @@ impl Game<'_> {
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
         self.text_displays.remove(&(id as i32));
+        self.displays.remove(&(id as i32));
+        self.interactions.remove(&(id as i32));
         self.remote_knots.remove(&id);
         self.carts.retain(|c| c.id != id);
         self.boats.retain(|b| b.id != id);

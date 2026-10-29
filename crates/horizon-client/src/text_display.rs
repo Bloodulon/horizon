@@ -142,6 +142,17 @@ impl TextDisplayData {
             }
         }
     }
+    /// `DisplayRenderer.getBrightnessOverride`: the packed sky and block
+    /// light of the brightness entry, or the level's light at the entity
+    /// (`-1`).
+    pub fn light(&self, world: u8) -> u32 {
+        if self.brightness == -1 {
+            crate::block_entity_render::vertex_light(world)
+        } else {
+            ((self.brightness as u32 >> 20 & 15) * 16)
+                | (((self.brightness as u32 >> 4 & 15) * 16) << 8)
+        }
+    }
     /// `TextDisplay.getAlign`: the left flag wins over the right one.
     pub fn align(&self) -> Align {
         if self.flags & 8 != 0 {

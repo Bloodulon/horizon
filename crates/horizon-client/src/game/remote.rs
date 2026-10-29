@@ -1523,6 +1523,14 @@ impl Game<'_> {
                 m.on_ground = on_ground;
                 return;
             }
+            // Interaction extends Entity and keeps its NO_OP interpolation
+            // handler: the server's position replaces its own at once.
+            if let Some(i) = self.interactions.get_mut(&id) {
+                if path.is_some() {
+                    i.position = Vec3::new(position[0], position[1], position[2]);
+                }
+                return;
+            }
             // Projectiles keep Entity's NO_OP InterpolationHandler too: the
             // server's position replaces theirs at once and their own tick
             // flies them on (`tick_remote_projectiles`). Eased towards it
@@ -1613,6 +1621,7 @@ impl Game<'_> {
         }
         self.turn_remote_object(id, rotation.map(|(yaw, _)| yaw), on_ground);
         self.move_remote_text_display(id, position, rotation);
+        self.move_remote_display(id, position, rotation);
         self.turn_remote_projectile(id, rotation);
     }
     fn remove_entity(&mut self, id: i32) {
@@ -2020,6 +2029,8 @@ impl Game<'_> {
                     );
                 }
                 self.move_remote_text_display(p.id, p.position, Some((rotation[0], rotation[1])));
+                self.move_remote_display(p.id, p.position, Some((rotation[0], rotation[1])));
+                self.move_remote_interaction(p.id, p.position);
             }
             C::RemoveEntities(p) => {
                 for id in p.ids {
@@ -4157,6 +4168,7 @@ impl Game<'_> {
     fn tick_remote_entities(&mut self, running: bool) {
         if running {
             self.tick_text_displays();
+            self.tick_displays();
         }
         // EntityFluidInteraction.update for the entities this window only displays: the
         // server never sends the fluid contact, and the renderers read it (cod, salmon and
@@ -4802,17 +4814,24 @@ impl Game<'_> {
             && self.mob_hit().is_none_or(|(_, d)| hit.distance < d)
             && self.before_block(hit.distance)
         {
-            // The main hand's turn takes it; there is no off hand turn.
-            if hand == Hand::Off {
+            // Interaction.interact answers SUCCESS when it responds and
+            // CONSUME otherwise: both end the click (nothing behind the box
+            // is used), but only SUCCESS swings; the packet carries the hand.
+            let response = self.interactions.get(&hit.id).map(|i| i.response);
+            // The main hand's turn takes anything else; there is no off
+            // hand turn.
+            if response.is_none() && hand == Hand::Off {
                 return false;
             }
             self.send(S::Interact(play::Interact {
                 id: hit.id,
-                hand: 0,
+                hand: hand_id(hand),
                 location: hit.location,
                 secondary: sneaking,
             }));
-            self.swing_arm();
+            if response.unwrap_or(true) {
+                self.swing_arm();
+            }
             return true;
         }
         if let Some((i, distance)) = self.mob_hit()

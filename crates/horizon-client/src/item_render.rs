@@ -309,7 +309,9 @@ fn submit_quads(
             color: argb(color),
             foil,
             light_emission: q.light_emission,
-            cull_back: false,
+            // `ITEM_CUTOUT`/`ITEM_TRANSLUCENT` keep the builder's default of
+            // back-face culling (unlike the entity pipelines).
+            cull_back: true,
             translucent: translucent || q.material.force_translucent,
         });
     }

@@ -51,6 +51,7 @@ mod dialogs;
 mod discord;
 mod dispense_fixture;
 mod dispenser;
+mod displays;
 mod dragon;
 mod dynamic_lights;
 mod enchant_effects;
@@ -77,6 +78,7 @@ mod growth;
 mod hand;
 mod initial_spawn;
 mod integrated;
+mod interactions;
 mod item_draw;
 mod item_particles;
 mod jukebox;
@@ -1793,6 +1795,8 @@ struct Game<'a> {
     /// Map textures waiting for the next HUD batch to upload them.
     map_patches: Vec<horizon_client::font::Patch>,
     text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
+    displays: std::collections::HashMap<i32, displays::RemoteDisplay>,
+    interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).
     remote_knots: HashMap<u32, [i32; 3]>,
@@ -8275,6 +8279,7 @@ impl Game<'_> {
         see_through.clear();
         self.name_tag_geometry(camera, alpha, &mut out, &mut see_through);
         self.text_display_geometry(camera, alpha, &mut out, &mut see_through);
+        self.display_geometry(camera, alpha, &mut out);
         self.see_through_vertices = see_through;
         // Entity shadows (EntityRenderer.extractShadow).
         self.mark_translucent_entity(out.len(), "minecraft:entity_shadow");
@@ -14308,6 +14313,8 @@ impl<'a> Game<'a> {
             dragon_model: prepared.dragon_model,
             map_patches: Vec::new(),
             text_displays: Default::default(),
+            displays: Default::default(),
+            interactions: Default::default(),
             remote_knots: Default::default(),
             knot_ids: Default::default(),
             text_display_vertices: 0,
@@ -15512,6 +15519,11 @@ impl Loading {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.error.is_some() {
+            // The loop still delivers events after `exit`: polling the finished
+            // loader again would replace its error with a channel disconnect.
+            return;
+        }
         if horizon_threads::stop_requests() > 0 {
             // No world is open yet: nothing to save.
             event_loop.exit();

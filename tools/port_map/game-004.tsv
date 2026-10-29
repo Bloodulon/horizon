@@ -82,12 +82,12 @@ Display.setBrightnessOverride	missing		minor: server side setter; there is no lo
 Display.getBrightnessOverride	inline	crates/horizon-client/src/game/text_displays.rs::Game::text_display_geometry	the packed sky and block light of the brightness entry (-1 uses the world light)
 Display.calculateInterpolationProgress	port	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::progress	
 Display.updateCulling	missing		minor: width and height are stored but no culling box is built
-Display.shouldRenderAtSqrDistance	inline	crates/horizon-client/src/game/text_displays.rs::Game::text_display_geometry	view_range * 64 * view scale squared
+Display.shouldRenderAtSqrDistance	inline	crates/horizon-client/src/game/text_displays.rs::Game::text_display_geometry	view_range * 64 * view scale squared; the same check in game/displays.rs::RemoteDisplay::pose
 Display.getTeamColor	missing		minor: glow_color_override is read but a glowing display gets no coloured outline
-Display.createFreshRenderState	inline	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::tick	the copy of the synced data when no interpolation runs
-Display.createInterpolatedRenderState	inline	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::tick	the new start state is the old one blended to the last drawn progress (TextDisplayData::blend)
-Display.BlockDisplay	missing		player: block displays a server or map places are not drawn at all (only text displays are); command and datapack made decorations are invisible
-Display.ItemDisplay	missing		player: item displays (floating items, custom models on servers) are not drawn at all; only text displays are
+Display.createFreshRenderState	inline	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::tick	the copy of the synced data when no interpolation runs; RemoteDisplay::tick in game/displays.rs
+Display.createInterpolatedRenderState	inline	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::tick	the new start state is the old one blended to the last drawn progress (TextDisplayData::blend); RemoteDisplay::tick in game/displays.rs
+Display.BlockDisplay	port	crates/horizon-client/src/game/displays.rs::RemoteDisplay::metadata	block state id 23; drawn by Game::display_geometry
+Display.ItemDisplay	port	crates/horizon-client/src/game/displays.rs::RemoteDisplay::metadata	item stack id 23 and display context id 24; drawn by Game::display_geometry
 Display.TextDisplay.defineSynchedData	port	crates/horizon-client/src/text_display.rs::TextDisplayData::default	text, line width 200, background 0x40000000, opacity -1, flags 0
 Display.TextDisplay.onSyncedDataUpdated	port	crates/horizon-client/src/game/text_displays.rs::RemoteTextDisplay::metadata	the text render state ids mark the render state dirty
 Display.TextDisplay.loadFlag	missing		minor: reads the NBT booleans into the style flags; no local display entity

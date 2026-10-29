@@ -123,7 +123,7 @@ impl RemoteTextDisplay {
         }
     }
 }
-fn angle(d: f32) -> f32 {
+pub(super) fn angle(d: f32) -> f32 {
     (d + 180.0).rem_euclid(360.0) - 180.0
 }
 
@@ -164,7 +164,9 @@ impl Game<'_> {
             display.last_progress = display.progress(partial as f32);
             let d = display.shown.blend(&display.from, display.last_progress);
             let position = display.previous.lerp(display.position, partial);
-            let range = f64::from(d.view_range) * 64.0 * scale;
+            // `Display.shouldRenderAtSqrDistance` reads the live view range,
+            // not the interpolated transform.
+            let range = f64::from(display.data.view_range) * 64.0 * scale;
             if position.distance_squared(camera) >= range * range || d.text.is_empty() {
                 continue;
             }
@@ -194,12 +196,7 @@ impl Game<'_> {
                 position.y.floor() as i32,
                 position.z.floor() as i32,
             );
-            let light = if d.brightness == -1 {
-                horizon_client::block_entity_render::vertex_light(world_light)
-            } else {
-                ((d.brightness as u32 >> 20 & 15) * 16)
-                    | (((d.brightness as u32 >> 4 & 15) * 16) << 8)
-            };
+            let light = d.light(world_light);
             // Font.DisplayMode: SEE_THROUGH over everything, else POLYGON_OFFSET.
             let through = d.flags & 2 != 0;
             let (out, layer) = if through {
