@@ -44,6 +44,9 @@ pub(super) struct RemoteDisplay {
     /// `Display.lastProgress`: the progress the last frame drew, where a new
     /// interpolation starts from.
     last_progress: f32,
+    /// `Entity.getVehicle`: a ModelEngine model's bones ride the pivot display
+    /// the plugin moves, and only the client carries the bones along.
+    vehicle: Option<i32>,
 }
 
 /// `ItemDisplay.RENDER_STATE_IDS` and `BlockDisplay.RENDER_STATE_IDS`: the
@@ -75,7 +78,22 @@ impl RemoteDisplay {
             duration_dirty: false,
             initialized: false,
             last_progress: 0.0,
+            vehicle: None,
         }
+    }
+    pub fn vehicle(&self) -> Option<i32> {
+        self.vehicle
+    }
+    pub fn set_vehicle(&mut self, vehicle: Option<i32>) {
+        self.vehicle = vehicle;
+    }
+    pub fn position(&self) -> glam::DVec3 {
+        self.position
+    }
+    /// `Entity.positionRider`'s move: a passenger is placed on its vehicle's
+    /// seat, not eased toward a target of its own.
+    pub fn ride_to(&mut self, at: glam::DVec3) {
+        self.position = at;
     }
     fn progress(&self, partial: f32) -> f32 {
         if self.duration <= 0 {
@@ -356,6 +374,32 @@ mod tests {
             DisplayKind::Block { state } => assert_eq!(*state, BlockStateId(42)),
             DisplayKind::Item { .. } => panic!("a block display changed kind"),
         }
+    }
+
+    #[test]
+    fn a_riding_display_is_placed_on_its_vehicle_between_ticks() {
+        let mut d = RemoteDisplay::new(
+            [0.0; 3],
+            0.0,
+            DisplayKind::Item {
+                stack: None,
+                context: DisplayContext::None,
+            },
+        );
+        d.set_vehicle(Some(7));
+        assert_eq!(d.vehicle(), Some(7));
+        d.ride_to(glam::DVec3::new(1.0, 2.0, 3.0));
+        assert_eq!(d.position(), glam::DVec3::new(1.0, 2.0, 3.0));
+        // The tick keeps the seat it had as the frame's start, so a moving
+        // vehicle slides the display instead of leaving it behind a frame.
+        d.tick();
+        d.ride_to(glam::DVec3::new(2.0, 2.0, 3.0));
+        assert_eq!(
+            d.previous.lerp(d.position, 0.5),
+            glam::DVec3::new(1.5, 2.0, 3.0)
+        );
+        d.set_vehicle(None);
+        assert_eq!(d.vehicle(), None);
     }
 
     #[test]

@@ -4511,6 +4511,8 @@ impl Game<'_> {
             // LightningBolt.tick on a client, and the sky flash fading.
             self.flash = self.flash.saturating_sub(1);
             self.tick_bolts();
+            // Entity.rideTick: displays ride their vehicle once it moved.
+            self.position_display_riders();
         }
         lerps.retain(|_, l| l.steps > 0);
         if let Some(r) = self.remote.as_mut() {
@@ -6901,6 +6903,10 @@ impl Remote {
             .iter()
             .find(|(_, u)| **u == uuid)
             .map(|(id, _)| *id as u32)
+    }
+    /// The kind and last sent position of a tracked server entity.
+    pub(super) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
+        self.entities.get(&id).map(|t| (&*t.kind, t.position))
     }
 }
 

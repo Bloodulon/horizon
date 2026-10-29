@@ -12,6 +12,7 @@
 use super::{Game, Keys, ray_box};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::packets::play::{self, Serverbound as S};
+use std::collections::HashMap;
 
 /// An object under the crosshair: its entity id, how far along the view it
 /// was hit, and where (`EntityHitResult.getLocation` minus the entity's
@@ -125,6 +126,30 @@ impl Game<'_> {
                 m.extra.passenger = true;
             }
         }
+        // Displays ride without a seat of their own (ModelEngine mounts a
+        // model's item displays on a pivot display, and its hitboxes on a
+        // second pivot); `position_display_riders` places them every tick.
+        for (&id, d) in &mut self.displays {
+            if passengers.contains(&id) {
+                d.set_vehicle(Some(vehicle));
+            } else if d.vehicle() == Some(vehicle) {
+                d.set_vehicle(None);
+            }
+        }
+        for (&id, d) in &mut self.text_displays {
+            if passengers.contains(&id) {
+                d.set_vehicle(Some(vehicle));
+            } else if d.vehicle() == Some(vehicle) {
+                d.set_vehicle(None);
+            }
+        }
+        for (&id, i) in &mut self.interactions {
+            if passengers.contains(&id) {
+                i.vehicle = Some(vehicle);
+            } else if i.vehicle == Some(vehicle) {
+                i.vehicle = None;
+            }
+        }
         if passengers.contains(&me) {
             if self.riding != Some(vehicle_id) {
                 self.riding = Some(vehicle_id);
@@ -148,6 +173,119 @@ impl Game<'_> {
                 }
             }
         }
+    }
+
+    /// `Entity.rideTick`: the displays a server mounted on a vehicle are
+    /// placed on it after the vehicle moved this tick (`positionRider`).
+    /// Nothing else moves them: ModelEngine sends only the pivot's position.
+    pub(super) fn position_display_riders(&mut self) {
+        let mut vehicles: Vec<i32> = self
+            .displays
+            .values()
+            .filter_map(|d| d.vehicle())
+            .chain(self.text_displays.values().filter_map(|d| d.vehicle()))
+            .chain(self.interactions.values().filter_map(|i| i.vehicle))
+            .collect();
+        if vehicles.is_empty() {
+            return;
+        }
+        vehicles.sort_unstable();
+        vehicles.dedup();
+        let seats: HashMap<i32, glam::DVec3> = vehicles
+            .into_iter()
+            .filter_map(|v| self.vehicle_seat(v).map(|at| (v, at)))
+            .collect();
+        let seat = |vehicle: Option<i32>| vehicle.and_then(|v| seats.get(&v).copied());
+        for d in self.displays.values_mut() {
+            if let Some(at) = seat(d.vehicle()) {
+                d.ride_to(at);
+            }
+        }
+        for d in self.text_displays.values_mut() {
+            if let Some(at) = seat(d.vehicle()) {
+                d.ride_to(at);
+            }
+        }
+        for i in self.interactions.values_mut() {
+            if let Some(at) = seat(i.vehicle) {
+                i.ride_to(at);
+            }
+        }
+    }
+
+    /// `Entity.getPassengerRidingPosition` of `id`: its position plus the
+    /// vehicle's passenger attachment (`EntityAttachments`). Displays and
+    /// interactions hang from their feet, so nothing is taken off.
+    fn vehicle_seat(&self, id: i32) -> Option<glam::DVec3> {
+        if let Some(m) = self.mobs.iter().find(|m| m.id == id as u32) {
+            let at = horizon_client::mobs::riders::seat(
+                horizon_client::mobs::riders::passenger_attachment(m),
+                0.0,
+                m.position,
+                m.yaw,
+            );
+            return Some(glam::DVec3::new(at.x, at.y, at.z));
+        }
+        if let Some(d) = self.displays.get(&id) {
+            return Some(d.position());
+        }
+        if let Some(d) = self.text_displays.get(&id) {
+            return Some(d.position());
+        }
+        if let Some(i) = self.interactions.get(&id) {
+            let at = i.position;
+            return Some(glam::DVec3::new(at.x, at.y, at.z));
+        }
+        if let Some(b) = self.boats.iter().find(|b| b.id == id as u32) {
+            let count = self.boat_players(id as u32).max(1) + self.boat_mobs(id as u32).len();
+            let at = b.seat(0, count, false, 0.0, false);
+            return Some(glam::DVec3::new(at.x, at.y, at.z));
+        }
+        if let Some(c) = self.carts.iter().find(|c| c.id == id as u32) {
+            let at = c
+                .position
+                .add_vector(Vec3::new(0.0, super::minecarts::SEAT, 0.0));
+            return Some(glam::DVec3::new(at.x, at.y, at.z));
+        }
+        if let Some(a) = self.armor_stands.iter().find(|a| a.id == id as u32) {
+            // ArmorStand.getDefaultDimensions: a marker has no box to sit on.
+            let height = if a.marker {
+                0.0
+            } else if a.small {
+                0.9875
+            } else {
+                1.975
+            };
+            return Some(glam::DVec3::new(
+                a.position.x,
+                a.position.y + height,
+                a.position.z,
+            ));
+        }
+        if let Some(me) = self.remote.as_ref().map(|r| r.entity_id)
+            && me == id
+            && let Some(p) = self.player.as_ref()
+        {
+            return Some(glam::DVec3::new(
+                p.position.x,
+                p.position.y + f64::from(p.dimensions.height),
+                p.position.z,
+            ));
+        }
+        let (kind, position) = self.remote.as_ref()?.tracked(id)?;
+        // AreaEffectCloud.getDimensions is 0.5 tall, so a passenger rides half
+        // a block above the cloud (ModelEngine spawns a model's pivot half a
+        // block below the feet for exactly that).
+        let lift = if kind == "minecraft:area_effect_cloud" {
+            0.5
+        } else {
+            0.0
+        };
+        Some(glam::DVec3::new(
+            position[0],
+            position[1] + lift,
+            position[2],
+        ))
     }
 
     /// The local player's tick in its vehicle, in place of its own movement:

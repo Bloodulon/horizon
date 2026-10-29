@@ -32,6 +32,8 @@ pub(super) struct RemoteTextDisplay {
     /// `TextDisplay.clientDisplayCache`: the split lines, until the render
     /// state changes.
     lines: Option<Lines>,
+    /// `Entity.getVehicle`: a display a server mounted this one on.
+    vehicle: Option<i32>,
 }
 
 /// `Display.RENDER_STATE_IDS` and `TextDisplay.TEXT_RENDER_STATE_IDS`: the
@@ -62,7 +64,22 @@ impl RemoteTextDisplay {
             initialized: false,
             last_progress: 0.0,
             lines: None,
+            vehicle: None,
         }
+    }
+    pub fn vehicle(&self) -> Option<i32> {
+        self.vehicle
+    }
+    pub fn set_vehicle(&mut self, vehicle: Option<i32>) {
+        self.vehicle = vehicle;
+    }
+    pub fn position(&self) -> glam::DVec3 {
+        self.position
+    }
+    /// `Entity.positionRider`'s move: a passenger is placed on its vehicle's
+    /// seat, not eased toward a target of its own.
+    pub fn ride_to(&mut self, at: glam::DVec3) {
+        self.position = at;
     }
     fn progress(&self, partial: f32) -> f32 {
         if self.duration <= 0 {
@@ -230,6 +247,18 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_riding_text_display_sits_on_its_vehicle() {
+        let mut d = RemoteTextDisplay::new([0.0; 3], 0.0);
+        d.set_vehicle(Some(4));
+        d.ride_to(glam::DVec3::new(8.0, 70.0, 8.0));
+        assert_eq!(d.position(), glam::DVec3::new(8.0, 70.0, 8.0));
+        d.tick();
+        d.ride_to(glam::DVec3::new(8.0, 70.5, 8.0));
+        assert_eq!(d.previous.lerp(d.position, 0.5).y, 70.25);
+        d.set_vehicle(None);
+        assert_eq!(d.vehicle(), None);
+    }
     #[test]
     fn metadata_and_position_interpolation_keep_their_separate_clocks() {
         let mut d = RemoteTextDisplay::new([0.0; 3], 0.0);
